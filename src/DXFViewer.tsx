@@ -179,12 +179,24 @@ const DXFViewer = forwardRef<DXFViewerRef, DXFViewerProps>(
           throw new Error("Scene reference is not available");
         }
 
+        console.log("Starting DXF parsing...");
         const parser = new DxfParser();
-        const dxf = parser.parseSync(content);
+        let dxf;
+        try {
+          dxf = parser.parseSync(content);
+        } catch (error) {
+          console.error("Error parsing DXF:", error);
+          throw new Error(`Failed to parse DXF content: ${error}`);
+        }
 
         if (!dxf) {
-          throw new Error("Failed to parse DXF content");
+          throw new Error("DXF parsing resulted in null or undefined");
         }
+
+        console.log(
+          "DXF parsed successfully. Full DXF object:",
+          JSON.stringify(dxf, null, 2)
+        );
 
         sceneRef.current.clear();
         const group = new THREE.Group();
@@ -192,75 +204,56 @@ const DXFViewer = forwardRef<DXFViewerRef, DXFViewerProps>(
         let entityCount = 0;
         const boundingBox = new THREE.Box3();
 
-        dxf.entities.forEach((entity) => {
-          let object;
+        if (dxf.entities && dxf.entities.length > 0) {
+          console.log(`Found ${dxf.entities.length} entities`);
+          dxf.entities.forEach((entity: any, index: number) => {
+            console.log(`Processing entity ${index} of type:`, entity.type);
+            console.log("Entity details:", JSON.stringify(entity, null, 2));
+            let object;
 
-          if (entity.type === "CIRCLE") {
-            const geometry = new THREE.BufferGeometry();
-            const points: THREE.Vector3[] = [];
-            for (let i = 0; i <= 64; i++) {
-              const angle = (i / 64) * Math.PI * 2;
-              points.push(
-                new THREE.Vector3(
-                  Math.cos(angle) * (entity as any).radius * SCALE_FACTOR,
-                  Math.sin(angle) * (entity as any).radius * SCALE_FACTOR,
-                  0
-                )
-              );
+            switch (entity.type) {
+              case "LINE":
+                object = createLine(entity);
+                break;
+              case "LWPOLYLINE":
+              case "POLYLINE":
+                object = createPolyline(entity);
+                break;
+              case "CIRCLE":
+                object = createCircle(entity);
+                break;
+              case "ARC":
+                object = createArc(entity);
+                break;
+              case "SPLINE":
+                object = createSpline(entity);
+                break;
+              default:
+                console.log(`Unsupported entity type: ${entity.type}`);
             }
-            geometry.setFromPoints(points);
-            const material = new THREE.LineBasicMaterial({ color: 0x000000 });
-            object = new THREE.LineLoop(geometry, material);
-            if ("center" in entity) {
-              object.position.set(
-                (entity.center as { x: number; y: number }).x * SCALE_FACTOR,
-                (entity.center as { x: number; y: number }).y * SCALE_FACTOR,
-                0
-              );
+
+            if (object) {
+              group.add(object);
+              entityCount++;
+              boundingBox.expandByObject(object);
+              console.log(`Added entity ${index} to the scene`);
+            } else {
+              console.log(`Failed to create object for entity ${index}`);
             }
-          } else if (
-            entity.type === "LWPOLYLINE" ||
-            entity.type === "POLYLINE"
-          ) {
-            const points: THREE.Vector3[] = [];
-            const vertices = (entity as any).vertices;
-            if (vertices && Array.isArray(vertices)) {
-              for (let i = 0; i < vertices.length; i++) {
-                const v = vertices[i];
-                const nextV = vertices[(i + 1) % vertices.length];
-
-                points.push(
-                  new THREE.Vector3(v.x * SCALE_FACTOR, v.y * SCALE_FACTOR, 0)
-                );
-
-                if (v.bulge) {
-                  const arcPoints = createArcGeometry(
-                    v,
-                    nextV,
-                    v.bulge,
-                    SCALE_FACTOR
-                  );
-                  points.push(...arcPoints);
-                }
-              }
-
-              const geometry = new THREE.BufferGeometry().setFromPoints(points);
-              const material = new THREE.LineBasicMaterial({ color: 0x000000 });
-              object = new THREE.Line(geometry, material);
-            }
-          }
-
-          if (object) {
-            group.add(object);
-            entityCount++;
-            boundingBox.expandByObject(object);
-          }
-        });
+          });
+        } else {
+          console.warn("No entities found in the DXF file");
+        }
 
         sceneRef.current.add(group);
 
+        console.log("Entity count:", entityCount);
+        console.log("Bounding box:", boundingBox.min, boundingBox.max);
+
         if (entityCount > 0) {
           fitToScene();
+        } else {
+          console.warn("No entities were rendered");
         }
 
         return boundingBox;
@@ -271,12 +264,80 @@ const DXFViewer = forwardRef<DXFViewerRef, DXFViewerProps>(
   }
 );
 
+// Add this new function to handle SPLINE entities
+function createSpline(entity: any) {
+  if (!entity.controlPoints || entity.controlPoints.length < 2) {
+    console.warn("Invalid SPLINE entity:", entity);
+    return null;
+  }
+  const points = entity.controlPoints.map(
+    (p: any) => new THREE.Vector3(p.x * SCALE_FACTOR, p.y * SCALE_FACTOR, 0)
+  );
+  const curve = new THREE.CatmullRomCurve3(points);
+  const geometry = new THREE.BufferGeometry().setFromPoints(
+    curve.getPoints(50)
+  );
+  return new THREE.Line(
+    geometry,
+    new THREE.LineBasicMaterial({ color: 0x000000 })
+  );
+}
+
+// Update other entity creation functions to include error handling
+function createLine(entity: any) {
+  if (!entity.vertices || entity.vertices.length < 2) {
+    console.warn("Invalid LINE entity:", entity);
+    return null;
+  }
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(
+      entity.vertices[0].x * SCALE_FACTOR,
+      entity.vertices[0].y * SCALE_FACTOR,
+      0
+    ),
+    new THREE.Vector3(
+      entity.vertices[1].x * SCALE_FACTOR,
+      entity.vertices[1].y * SCALE_FACTOR,
+      0
+    ),
+  ]);
+  return new THREE.Line(
+    geometry,
+    new THREE.LineBasicMaterial({ color: 0x000000 })
+  );
+}
+function createPolyline(entity: any): THREE.Line | null {
+  if (!entity.vertices || !Array.isArray(entity.vertices)) {
+    console.warn("Invalid POLYLINE entity:", entity);
+    return null;
+  }
+
+  const points: THREE.Vector3[] = [];
+  const vertices = entity.vertices;
+
+  for (let i = 0; i < vertices.length; i++) {
+    const v = vertices[i];
+    const nextV = vertices[(i + 1) % vertices.length];
+
+    points.push(new THREE.Vector3(v.x * SCALE_FACTOR, v.y * SCALE_FACTOR, 0));
+
+    if (v.bulge) {
+      const arcPoints = createArcGeometry(v, nextV, v.bulge, SCALE_FACTOR);
+      points.push(...arcPoints.slice(1)); // Exclude the first point to avoid duplication
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({ color: 0x000000 });
+  return new THREE.Line(geometry, material);
+}
+
 function createArcGeometry(
   start: { x: number; y: number },
   end: { x: number; y: number },
   bulge: number,
   scaleFactor: number
-) {
+): THREE.Vector3[] {
   const chord = new THREE.Vector2(end.x - start.x, end.y - start.y);
   const chordLength = chord.length();
   const theta = 4 * Math.atan(Math.abs(bulge));
@@ -313,6 +374,75 @@ function createArcGeometry(
   }
 
   return points;
+}
+
+function createCircle(entity: any): THREE.LineLoop | null {
+  if (!entity.radius || !entity.center) {
+    console.warn("Invalid CIRCLE entity:", entity);
+    return null;
+  }
+  const geometry = new THREE.BufferGeometry();
+  const points: THREE.Vector3[] = [];
+  for (let i = 0; i <= 64; i++) {
+    const angle = (i / 64) * Math.PI * 2;
+    points.push(
+      new THREE.Vector3(
+        Math.cos(angle) * entity.radius * SCALE_FACTOR,
+        Math.sin(angle) * entity.radius * SCALE_FACTOR,
+        0
+      )
+    );
+  }
+  geometry.setFromPoints(points);
+  const circle = new THREE.LineLoop(
+    geometry,
+    new THREE.LineBasicMaterial({ color: 0x000000 })
+  );
+  circle.position.set(
+    entity.center.x * SCALE_FACTOR,
+    entity.center.y * SCALE_FACTOR,
+    0
+  );
+  return circle;
+}
+
+function createArc(entity: any): THREE.Line | null {
+  if (
+    !entity.center ||
+    entity.startAngle === undefined ||
+    entity.endAngle === undefined ||
+    !entity.radius
+  ) {
+    console.warn("Invalid ARC entity:", entity);
+    return null;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  const points: THREE.Vector3[] = [];
+
+  const startAngle = entity.startAngle;
+  const endAngle = entity.endAngle;
+  const radius = entity.radius;
+
+  // Ensure the end angle is greater than the start angle
+  const fullAngle = endAngle < startAngle ? endAngle + 2 * Math.PI : endAngle;
+
+  // Number of segments to use for the arc
+  const segments = 32;
+
+  for (let i = 0; i <= segments; i++) {
+    const angle = startAngle + (fullAngle - startAngle) * (i / segments);
+    const x = entity.center.x + radius * Math.cos(angle);
+    const y = entity.center.y + radius * Math.sin(angle);
+    points.push(new THREE.Vector3(x * SCALE_FACTOR, y * SCALE_FACTOR, 0));
+  }
+
+  geometry.setFromPoints(points);
+
+  return new THREE.Line(
+    geometry,
+    new THREE.LineBasicMaterial({ color: 0x000000 })
+  );
 }
 
 export default DXFViewer;
