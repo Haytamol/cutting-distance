@@ -36,15 +36,30 @@ const App: React.FC = () => {
       const dxfContent = e.target?.result;
       if (viewerRef.current && typeof dxfContent === "string") {
         try {
+          setDebugInfo("Loading DXF content...");
+
+          // Log the first few lines of the DXF content for debugging
+          setDebugInfo(
+            (prevInfo) =>
+              `${prevInfo}\nFirst 200 characters of DXF content:\n${dxfContent.substring(
+                0,
+                200
+              )}`
+          );
+
           const box = await viewerRef.current.loadDxfContent(dxfContent);
           setDebugInfo(
-            `Entities rendered. Bounding box: ${JSON.stringify(box)}`
+            (prevInfo) =>
+              `${prevInfo}\nEntities rendered. Bounding box: ${JSON.stringify(
+                box
+              )}`
           );
 
           // Validate bounding box
           const isValid =
-            Object.values(box.min).every(isFinite) &&
-            Object.values(box.max).every(isFinite) &&
+            box &&
+            Object.values(box.min).every((v) => v !== null && isFinite(v)) &&
+            Object.values(box.max).every((v) => v !== null && isFinite(v)) &&
             (box.max.x > box.min.x ||
               box.max.y > box.min.y ||
               box.max.z > box.min.z);
@@ -58,15 +73,21 @@ const App: React.FC = () => {
             setDimensions({ width: "N/A", height: "N/A" });
             setDebugInfo(
               (prevInfo) =>
-                `${prevInfo}\nInvalid bounding box: ${JSON.stringify(box)}`
+                `${prevInfo}\nInvalid or empty bounding box: ${JSON.stringify(
+                  box
+                )}\n` +
+                `This may indicate that no entities were found in the DXF file.`
             );
           }
         } catch (error: unknown) {
           console.error("Error loading DXF content:", error);
           setDebugInfo(
-            `Error loading DXF content: ${
-              error instanceof Error ? error.message : String(error)
-            }`
+            (prevInfo) =>
+              `${prevInfo}\nError loading DXF content: ${
+                error instanceof Error ? error.message : String(error)
+              }\n` +
+              `Check if the DXF file contains valid entity data.\n` +
+              `DXF content length: ${dxfContent.length} characters`
           );
         }
       }
