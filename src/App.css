@@ -73,7 +73,7 @@ input[type="file"] {
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 1rem;
-  background-color: var(--surface-color);
+  background-color: var(--primary-color);
 }
 
 .dimensions,
