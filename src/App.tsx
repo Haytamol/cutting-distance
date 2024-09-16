@@ -19,13 +19,14 @@ const App: React.FC = () => {
 
   const options = useMemo(
     () => ({
-      clearColor: new THREE.Color("#dddddd"), // Light gray background
+      clearColor: new THREE.Color("#ffffff"),
       autoResize: true,
-      colorCorrection: true,
+      // Remove or set colorCorrection to false
+      // colorCorrection: false,
       sceneOptions: {
         wireframeMesh: false,
         showEdges: true,
-        boundingBox: true,
+        boundingBox: false,
         debug: true,
       },
     }),
