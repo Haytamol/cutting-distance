@@ -1,12 +1,19 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback } from "react";
 import DxfViewerComponent from "./dxf-viewer";
+import SvgViewer from "./svg-viewer";
+import { calculateSvgCuttingDistance } from "./calculate-svg-cutting-distance";
 import "./App.css";
 import * as THREE from "three";
 
 const App: React.FC = () => {
   const [dxfUrl, setDxfUrl] = useState<string | null>(null);
+  const [svgContent, setSvgContent] = useState<string | null>(null);
+  const [svgDetails, setSvgDetails] = useState<{
+    cuttingDistance: number | null;
+    otherMetrics?: { [key: string]: any };
+  } | null>(null);
 
-  const handleFileChange = useCallback(
+  const handleDxfFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const selectedFile = event.target.files?.[0];
       if (selectedFile) {
@@ -17,37 +24,68 @@ const App: React.FC = () => {
     []
   );
 
-  const options = useMemo(
-    () => ({
-      clearColor: new THREE.Color("#ffffff"),
-      autoResize: true,
-      // Remove or set colorCorrection to false
-      // colorCorrection: false,
-      sceneOptions: {
-        wireframeMesh: false,
-        showEdges: true,
-        boundingBox: false,
-        debug: true,
-      },
-    }),
+  const handleSvgFileChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFile = event.target.files?.[0];
+      if (selectedFile) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (e.target?.result) {
+            const svgText = e.target.result as string;
+            setSvgContent(svgText);
+
+            // Calculate SVG details
+            const cuttingDistance = calculateSvgCuttingDistance(svgText);
+            const otherMetrics = {
+              pathCount: 5, // Example metric: Add more as needed
+              shapes: 3, // Example metric
+            };
+
+            setSvgDetails({
+              cuttingDistance,
+              otherMetrics,
+            });
+          }
+        };
+        reader.readAsText(selectedFile);
+      }
+    },
     []
   );
 
-  const fonts = useMemo(() => [], []);
+  const options = {
+    clearColor: new THREE.Color("#ffffff"),
+    autoResize: true,
+    sceneOptions: {
+      wireframeMesh: false,
+      showEdges: true,
+      boundingBox: false,
+      debug: true,
+    },
+  };
+
+  const fonts: string[] = [];
 
   return (
     <div className="App">
-      <h1>DXF Viewer</h1>
+      <h1>DXF and SVG Viewer</h1>
+
+      {/* File Upload Buttons */}
       <div className="file-input-container">
         <label className="file-input-label">
-          Choose File
-          <input type="file" accept=".dxf" onChange={handleFileChange} />
+          Upload DXF
+          <input type="file" accept=".dxf" onChange={handleDxfFileChange} />
+        </label>
+        <label className="file-input-label">
+          Upload SVG
+          <input type="file" accept=".svg" onChange={handleSvgFileChange} />
         </label>
       </div>
-      <div
-        style={{ width: "100%", height: "600px", border: "1px solid white" }}
-      >
-        {dxfUrl && (
+
+      {/* Viewers Section */}
+      <div className="viewers-container">
+        {/* DXF Viewer */}
+        <div className="viewer-container">
           <DxfViewerComponent
             dxfUrl={dxfUrl}
             options={options}
@@ -55,7 +93,12 @@ const App: React.FC = () => {
             width={800}
             height={600}
           />
-        )}
+        </div>
+
+        {/* SVG Viewer */}
+        <div className="viewer-container">
+          <SvgViewer svgContent={svgContent} svgDetails={svgDetails} />
+        </div>
       </div>
     </div>
   );
