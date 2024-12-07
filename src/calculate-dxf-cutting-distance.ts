@@ -8,14 +8,14 @@ export const isLineEntity = (entity: IEntity): entity is IEntity => {
 // Helper function to retrieve start and end points for LINE entities
 const getLineStartEnd = (entity: IEntity) => {
   const start = {
-    x: (entity as any)["10"] as number,
-    y: (entity as any)["20"] as number,
-    z: (entity as any)["30"] as number,
+    x: (entity as any).vertices[0].x as number,
+    y: (entity as any).vertices[0].y as number,
+    z: (entity as any).vertices[0].z as number,
   };
   const end = {
-    x: (entity as any)["11"] as number,
-    y: (entity as any)["21"] as number,
-    z: (entity as any)["31"] as number,
+    x: (entity as any).vertices[1].x as number,
+    y: (entity as any).vertices[1].y as number,
+    z: (entity as any).vertices[1].z as number,
   };
   return { start, end };
 };
@@ -46,7 +46,7 @@ export const isCircleEntity = (
 // Type guard to check if the entity is a POLYLINE or LWPOLYLINE
 export const isPolylineEntity = (
   entity: IEntity
-): entity is IEntity & { vertices: any[] } => {
+): entity is IEntity & { vertices: any[], shape: boolean } => {
   return (
     (entity.type === "LWPOLYLINE" || entity.type === "POLYLINE") &&
     "vertices" in entity
@@ -136,14 +136,15 @@ export const calculateDxfCuttingDistance = (dxfContent: string): number => {
     // Check for POLYLINE and LWPOLYLINE entities
     if (isPolylineEntity(entity)) {
       entity.vertices.forEach((vertex, index) => {
-        if (index > 0) {
-          const prevVertex = entity.vertices[index - 1];
-          const length = Math.sqrt(
-            Math.pow(vertex.x - prevVertex.x, 2) +
-              Math.pow(vertex.y - prevVertex.y, 2)
-          );
-          totalDistance += length;
-        }
+        // Assuming the `shape` property tells us whether or not the line is closed
+        // we draw another line connecting the last vertex to the first
+        if (!entity.shape && index === 0) return; 
+        const prevVertex = entity.vertices[index === 0 ? entity.vertices.length - 1 : index - 1];
+        const length = Math.sqrt(
+          Math.pow(vertex.x - prevVertex.x, 2) +
+            Math.pow(vertex.y - prevVertex.y, 2)
+        );
+        totalDistance += length;
       });
     }
 

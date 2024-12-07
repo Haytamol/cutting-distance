@@ -18,8 +18,8 @@ export const calculateSvgCuttingDistance = (svgContent: string): number => {
   const circles = group.querySelectorAll("circle");
   circles.forEach((circle) => {
     const radius = parseFloat(circle.getAttribute("r") || "0");
-    const cx = circle.getAttribute("cx") || "0";
-    const cy = circle.getAttribute("cy") || "0";
+    // const cx = circle.getAttribute("cx") || "0";
+    // const cy = circle.getAttribute("cy") || "0";
 
     if (radius > 0) {
       const circumference = 2 * Math.PI * radius;
